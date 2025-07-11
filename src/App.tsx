@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Plus, Minus, ChevronLeft, ChevronRight } from 'lucide-react'
 import './App.css'
+import { PROGRAMMING_LANGUAGES } from './programmingLanguages'
 
 interface Skill {
   id: string
@@ -20,6 +21,10 @@ function App() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
   const [newSkillName, setNewSkillName] = useState('')
+  const [filteredLanguages, setFilteredLanguages] = useState<string[]>([])
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const savedSkills = localStorage.getItem('skills')
@@ -32,17 +37,112 @@ function App() {
     localStorage.setItem('skills', JSON.stringify(skills))
   }, [skills])
 
-  const addSkill = () => {
-    if (newSkillName.trim()) {
-      const newSkill: Skill = {
-        id: Date.now().toString(),
-        name: newSkillName.trim(),
-        level: 3
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (inputRef.current && !inputRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+        setSelectedIndex(-1)
       }
-      setSkills([...skills, newSkill])
-      setNewSkillName('')
-      setShowAddForm(false)
     }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const filterLanguages = (input: string) => {
+    if (!input.trim()) {
+      setFilteredLanguages([])
+      setShowDropdown(false)
+      return
+    }
+    
+    const filtered = PROGRAMMING_LANGUAGES.filter(lang =>
+      lang.toLowerCase().includes(input.toLowerCase())
+    ).slice(0, 10)
+    
+    setFilteredLanguages(filtered)
+    setShowDropdown(filtered.length > 0)
+    setSelectedIndex(-1)
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setNewSkillName(value)
+    filterLanguages(value)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showDropdown) {
+      if (e.key === 'Enter') {
+        addSkill()
+      }
+      return
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setSelectedIndex(prev => 
+          prev < filteredLanguages.length - 1 ? prev + 1 : prev
+        )
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setSelectedIndex(prev => prev > 0 ? prev - 1 : -1)
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (selectedIndex >= 0) {
+          selectLanguage(filteredLanguages[selectedIndex])
+        } else {
+          addSkill()
+        }
+        break
+      case 'Escape':
+        setShowDropdown(false)
+        setSelectedIndex(-1)
+        break
+    }
+  }
+
+  const selectLanguage = (language: string) => {
+    setNewSkillName(language)
+    setShowDropdown(false)
+    setSelectedIndex(-1)
+    inputRef.current?.focus()
+  }
+
+  const addSkill = () => {
+    const trimmedName = newSkillName.trim()
+    if (!trimmedName) return
+    
+    const isValidLanguage = PROGRAMMING_LANGUAGES.some(lang => 
+      lang.toLowerCase() === trimmedName.toLowerCase()
+    )
+    
+    if (!isValidLanguage) {
+      alert('有効なプログラミング言語を入力してください')
+      return
+    }
+    
+    const isDuplicate = skills.some(skill => 
+      skill.name.toLowerCase() === trimmedName.toLowerCase()
+    )
+    
+    if (isDuplicate) {
+      alert('このスキルは既に追加されています')
+      return
+    }
+
+    const newSkill: Skill = {
+      id: Date.now().toString(),
+      name: trimmedName,
+      level: 3
+    }
+    setSkills([...skills, newSkill])
+    setNewSkillName('')
+    setShowAddForm(false)
+    setShowDropdown(false)
   }
 
   const removeSkill = (id: string) => {
@@ -75,11 +175,6 @@ function App() {
     setSkills(sorted)
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      addSkill()
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -124,16 +219,37 @@ function App() {
         </div>
 
         {showAddForm && (
-          <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
-            <input
-              type="text"
-              value={newSkillName}
-              onChange={(e) => setNewSkillName(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="スキル名を入力してEnterキーを押してください"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-            />
+          <div className="mb-6 p-4 bg-white rounded-lg shadow-md relative">
+            <div className="relative">
+              <input
+                ref={inputRef}
+                type="text"
+                value={newSkillName}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="プログラミング言語名を入力してください"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+                autoComplete="off"
+              />
+              
+              {showDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {filteredLanguages.map((language, index) => (
+                    <div
+                      key={language}
+                      className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
+                        index === selectedIndex ? 'bg-blue-100' : ''
+                      }`}
+                      onClick={() => selectLanguage(language)}
+                    >
+                      {language}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
             <div className="mt-2 flex gap-2">
               <button
                 onClick={addSkill}
@@ -145,6 +261,7 @@ function App() {
                 onClick={() => {
                   setShowAddForm(false)
                   setNewSkillName('')
+                  setShowDropdown(false)
                 }}
                 className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
               >
